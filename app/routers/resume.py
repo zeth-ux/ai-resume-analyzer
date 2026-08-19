@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from app.services.parser import extract_text
-from app.services.scorer import keyword_score, ROLE_PROFILES
+from app.services.scorer import keyword_score, embedding_score, ROLE_PROFILES
 
 router = APIRouter()
 
@@ -28,10 +28,19 @@ async def upload_resume(
     content = await file.read()
     text = extract_text(content, ext)
 
-    result = keyword_score(text, role)
+    kw_result = keyword_score(text, role)
+    emb_result = embedding_score(text, role)
+
+    final_score = round(
+        kw_result["overall_keyword_score"] * 0.6 + emb_result["semantic_similarity_score"] * 0.4,
+        1
+    )
 
     return {
         "filename": file.filename,
         "extracted_length": len(text),
-        "analysis": result
+        "role": kw_result["role"],
+        "final_score": final_score,
+        "keyword_analysis": kw_result,
+        "semantic_analysis": emb_result,
     }

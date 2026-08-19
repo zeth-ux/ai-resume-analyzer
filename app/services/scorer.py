@@ -1,4 +1,5 @@
 import re
+from sentence_transformers import SentenceTransformer, util
 
 ROLE_PROFILES = {
     "ai_software_engineer": {
@@ -18,11 +19,13 @@ ROLE_PROFILES = {
     },
 }
 
+_model = SentenceTransformer("all-MiniLM-L6-v2")
+
 
 def clean_text(text: str) -> str:
     text = text.lower()
-    text = re.sub(r"[^a-z0-9\s]", " ", text)   # strip punctuation
-    text = re.sub(r"\s+", " ", text)            # collapse whitespace
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
@@ -41,7 +44,6 @@ def keyword_score(resume_text: str, role_key: str) -> dict:
     required_score = len(matched_required) / len(profile["required_skills"])
     nice_score = len(matched_nice) / len(profile["nice_to_have"]) if profile["nice_to_have"] else 0
 
-    # weighted: required skills matter more than nice-to-haves
     overall = round((required_score * 0.7 + nice_score * 0.3) * 100, 1)
 
     return {
@@ -51,4 +53,26 @@ def keyword_score(resume_text: str, role_key: str) -> dict:
         "missing_required": missing_required,
         "matched_nice_to_have": matched_nice,
         "missing_nice_to_have": missing_nice,
+    }
+
+
+def embedding_score(resume_text: str, role_key: str) -> dict:
+    if role_key not in ROLE_PROFILES:
+        raise ValueError(f"Unknown role: {role_key}")
+
+    profile = ROLE_PROFILES[role_key]
+
+    role_description = (
+        f"{profile['title']} requiring skills in: "
+        + ", ".join(profile["required_skills"] + profile["nice_to_have"])
+    )
+
+    resume_embedding = _model.encode(resume_text, convert_to_tensor=True)
+    role_embedding = _model.encode(role_description, convert_to_tensor=True)
+
+    similarity = util.cos_sim(resume_embedding, role_embedding).item()
+    similarity_pct = round(max(0, min(1, similarity)) * 100, 1)
+
+    return {
+        "semantic_similarity_score": similarity_pct
     }
